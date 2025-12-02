@@ -60,6 +60,11 @@ jobs:
         run: make build
         working-directory: .
 
+      - name: Update artifact version, package, commit, and create release.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GHA_TOKEN }}
+        run: bash ./.github/scripts/release.sh $GITHUB_TOKEN ${{ github.workspace }} ${{ github.event.inputs.version_type }}
+
       - name: Get version from tag
         id: get_version
         run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
@@ -91,11 +96,6 @@ jobs:
           digest=$(docker buildx imagetools inspect ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.version }} \
             --format '{{json .}}' | jq -r '.manifest.digest')
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
-
-      - name: Update artifact version, package, commit, and create release.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GHA_TOKEN }}
-        run: bash ./.github/scripts/release.sh $GITHUB_TOKEN ${{ github.workspace }} ${{ github.event.inputs.version_type }}
 
       - name: Update release with Docker image info
         env:
