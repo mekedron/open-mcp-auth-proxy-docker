@@ -26,6 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GOPROXY: https://proxy.golang.org
+      REGISTRY: ghcr.io
+      IMAGE_NAME: open-mcp-auth-proxy
     if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v2
@@ -58,7 +60,69 @@ jobs:
         run: make build
         working-directory: .
 
+      - name: Get version from tag
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        run: |
+          docker buildx build -f Dockerfile \
+            --platform linux/amd64,linux/arm64 \
+            -t ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.version }} \
+            -t ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest \
+            --push .
+
+      - name: Get image digest
+        id: get_digest
+        run: |
+          digest=$(docker buildx imagetools inspect ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.version }} \
+            --format '{{json .}}' | jq -r '.manifest.digest')
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
       - name: Update artifact version, package, commit, and create release.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash ./.github/scripts/release.sh $GITHUB_TOKEN ${{ github.workspace }} ${{ github.event.inputs.version_type }}
+
+      - name: Update release with Docker image info
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMAGE_URL="ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.version }}"
+          DIGEST="${{ steps.get_digest.outputs.digest }}"
+
+          gh release view ${{ steps.get_version.outputs.version }} --json body -q .body > current_body.txt
+
+          cat >> current_body.txt << EOF
+
+          ## Docker Image
+
+          **Image:** \`${IMAGE_URL}\`
+          **Digest:** \`${DIGEST}\`
+          **Platforms:** linux/amd64, linux/arm64
+
+          ### Pull the image:
+          \`\`\`bash
+          docker pull ${IMAGE_URL}
+          \`\`\`
+
+          Or use the digest for immutable deployments:
+          \`\`\`bash
+          docker pull ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${DIGEST}
+          \`\`\`
+          EOF
+
+          gh release edit ${{ steps.get_version.outputs.version }} --notes-file current_body.txt

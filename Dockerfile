@@ -17,7 +17,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary with CGO disabled for static linking
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o openmcpauthproxy ./cmd/proxy
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o openmcpauthproxy ./cmd/proxy
 
 # Runtime stage
 FROM alpine:latest
