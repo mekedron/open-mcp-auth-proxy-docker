@@ -17,6 +17,25 @@ func NewDefaultProvider(cfg *config.Config) Provider {
 	return &defaultProvider{cfg: cfg}
 }
 
+// getBaseURL constructs the base URL from the HTTP request
+func getBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	// Check for X-Forwarded-Proto header (set by proxies/load balancers)
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	}
+
+	host := r.Host
+	if host == "" {
+		host = "localhost"
+	}
+
+	return scheme + "://" + host
+}
+
 func (p *defaultProvider) WellKnownHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -40,17 +59,23 @@ func (p *defaultProvider) WellKnownHandler() http.HandlerFunc {
 				// Use configured response values
 				responseConfig := pathConfig.Response
 
+				// Get base URL from config or construct from request
+				baseURL := p.cfg.BaseURL
+				if baseURL == "" {
+					baseURL = getBaseURL(r)
+				}
+
 				authorizationEndpoint := responseConfig.AuthorizationEndpoint
 				if authorizationEndpoint == "" {
-					authorizationEndpoint = p.cfg.BaseURL + "/authorize"
+					authorizationEndpoint = baseURL + "/authorize"
 				}
 				tokenEndpoint := responseConfig.TokenEndpoint
 				if tokenEndpoint == "" {
-					tokenEndpoint = p.cfg.BaseURL + "/token"
+					tokenEndpoint = baseURL + "/token"
 				}
 				registrationEndpoint := responseConfig.RegistrationEndpoint
 				if registrationEndpoint == "" {
-					registrationEndpoint = p.cfg.BaseURL + "/register"
+					registrationEndpoint = baseURL + "/register"
 				}
 
 				// Build response from config
