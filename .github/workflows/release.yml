@@ -27,7 +27,7 @@ jobs:
     env:
       GOPROXY: https://proxy.golang.org
       REGISTRY: ghcr.io
-      IMAGE_NAME: open-mcp-auth-proxy
+      IMAGE_NAME: open-mcp-auth-proxy-docker
     if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v2
@@ -67,7 +67,12 @@ jobs:
 
       - name: Get version from tag
         id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: |
+          # Fetch the latest tag created by the release script
+          git fetch --tags
+          VERSION=$(git describe --tags --abbrev=0)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Latest version: $VERSION"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
