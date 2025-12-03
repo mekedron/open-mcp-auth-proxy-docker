@@ -22,12 +22,13 @@ func main() {
 	asgardeoMode := flag.Bool("asgardeo", false, "Use Asgardeo-based provider (asgardeo).")
 	debugMode := flag.Bool("debug", false, "Enable debug logging")
 	stdioMode := flag.Bool("stdio", false, "Use stdio transport mode instead of SSE")
+	configPath := flag.String("config", "config.yaml", "Path to configuration file")
 	flag.Parse()
 
 	logger.SetDebug(*debugMode)
 
 	// 1. Load config
-	cfg, err := config.LoadConfig("config.yaml")
+	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
 		logger.Error("Error loading config: %v", err)
 		os.Exit(1)
@@ -70,9 +71,14 @@ func main() {
 	var provider authz.Provider = MakeProvider(cfg, *demoMode, *asgardeoMode)
 
 	// 4. (Optional) Fetch JWKS if you want local JWT validation
-	if err := util.FetchJWKS(cfg.JWKSURL); err != nil {
-		logger.Error("Failed to fetch JWKS: %v", err)
-		os.Exit(1)
+	if cfg.JWKSURL != "" {
+		if err := util.FetchJWKS(cfg.JWKSURL); err != nil {
+			logger.Error("Failed to fetch JWKS: %v", err)
+			os.Exit(1)
+		}
+		logger.Info("JWKS fetched successfully from: %s", cfg.JWKSURL)
+	} else {
+		logger.Info("No JWKS URL configured, skipping JWKS fetch")
 	}
 
 	// 5. (Optional) Build the access controler
